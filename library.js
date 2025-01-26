@@ -26,15 +26,15 @@ plugin.init = async (params) => {
 	 *
 	 * Other helpers include `setupAdminPageRoute` and `setupAPIRoute`
 	 * */
-	routeHelpers.setupPageRoute(router, '/quickstart', [(req, res, next) => {
-		winston.info(`[plugins/quickstart] In middleware. This argument can be either a single middleware or an array of middlewares`);
+	routeHelpers.setupPageRoute(router, '/tag-to-category', [(req, res, next) => {
+		winston.info(`[plugins/tag-to-category] In middleware. This argument can be either a single middleware or an array of middlewares`);
 		setImmediate(next);
 	}], (req, res) => {
-		winston.info(`[plugins/quickstart] Navigated to ${nconf.get('relative_path')}/quickstart`);
-		res.render('quickstart', { uid: req.uid });
+		winston.info(`[plugins/tag-to-category] Navigated to ${nconf.get('relative_path')}/tag-to-category`);
+		res.render('tag-to-category', { uid: req.uid });
 	});
 
-	routeHelpers.setupAdminPageRoute(router, '/admin/plugins/quickstart', controllers.renderAdminPage);
+	routeHelpers.setupAdminPageRoute(router, '/admin/plugins/tag-to-category', controllers.renderAdminPage);
 };
 
 /**
@@ -65,7 +65,7 @@ plugin.init = async (params) => {
 plugin.addRoutes = async ({ router, middleware, helpers }) => {
 	const middlewares = [
 		middleware.ensureLoggedIn,			// use this if you want only registered users to call this route
-		// middleware.admin.checkPrivileges,	// use this to restrict the route to administrators
+		middleware.admin.checkPrivileges,	// use this to restrict the route to administrators
 	];
 
 	routeHelpers.setupApiRoute(router, 'get', '/quickstart/:param1', middlewares, (req, res) => {
@@ -84,5 +84,28 @@ plugin.addAdminNavigation = (header) => {
 
 	return header;
 };
+
+
+plugin.moveTopicByTag = (input) => {
+	// gonna move these to a setting when i figure that out.
+	var targetCid = 8;
+	var cidTags = ["anime", "rpgmemes", "test"]
+
+	// might be able to declare this in function signature?
+	// hardly use javascript, so I'm not sure...
+	let result = {topic: {}, data: {}};
+	result.topic = input.topic;
+	result.data = input.data;
+
+	//we use toLowerCase() to prevent capitalization mismatches
+	const foundMatch = cidTags.some(r=> result.topic.tags.includes(r.toLowerCase()));
+	
+	// activitypub.helpers.isUri(uid) will be useful later perhaps?
+	if (foundMatch) {
+		result.topic.cid = targetCid;
+	}
+
+	return result;
+}
 
 module.exports = plugin;
