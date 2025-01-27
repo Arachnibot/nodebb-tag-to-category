@@ -16,12 +16,15 @@ plugin.init = async (params) => {
 	const router = params.router;
     const hostMiddleware = params.middleware;
     const controllers = params.controllers;
-    const settings = await meta.settings.get("tag-to-category-0.0");
+
 
 	// debug reset line
 	await meta.settings.set("tag-to-category-0.0", {});
-	plugin
 
+    const settings = await meta.settings.get("tag-to-category-0.0");
+
+
+	
 	if (settings === undefined || _.isEmpty(settings)) {
 		winston.info("tag-to-category: settings missing. Initializing...");
 
