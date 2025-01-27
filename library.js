@@ -1,5 +1,6 @@
 'use strict';
 
+const _ = require.main.require("lodash");
 const nconf = require.main.require('nconf');
 const winston = require.main.require('winston');
 
@@ -12,29 +13,36 @@ const routeHelpers = require.main.require('./src/routes/helpers');
 const plugin = {};
 
 plugin.init = async (params) => {
-	const { router /* , middleware , controllers */ } = params;
+	const router = params.router;
+    const hostMiddleware = params.middleware;
+    const controllers = params.controllers;
+    const settings = await meta.settings.get("tag-to-category-0.0");
 
-	// Settings saved in the plugin settings can be retrieved via settings methods
-	const { setting1, setting2 } = await meta.settings.get('quickstart');
-	if (setting1) {
-		console.log(setting2);
-	}
+	// debug reset line
+	await meta.settings.set("tag-to-category-0.0", {});
+	plugin
 
-	/**
-	 * We create two routes for every view. One API call, and the actual route itself.
-	 * Use the `setupPageRoute` helper and NodeBB will take care of everything for you.
-	 *
-	 * Other helpers include `setupAdminPageRoute` and `setupAPIRoute`
-	 * */
-	routeHelpers.setupPageRoute(router, '/tag-to-category', [(req, res, next) => {
-		winston.info(`[plugins/tag-to-category] In middleware. This argument can be either a single middleware or an array of middlewares`);
-		setImmediate(next);
-	}], (req, res) => {
-		winston.info(`[plugins/tag-to-category] Navigated to ${nconf.get('relative_path')}/tag-to-category`);
-		res.render('tag-to-category', { uid: req.uid });
-	});
+	if (settings === undefined || _.isEmpty(settings)) {
+		winston.info("tag-to-category: settings missing. Initializing...");
 
-	routeHelpers.setupAdminPageRoute(router, '/admin/plugins/tag-to-category', controllers.renderAdminPage);
+		plugin.settings = {
+            tags: [{name: "_example", routesTo: -1}],
+			users: [{name: "example@example.org", routesTo: -1}]
+        };
+
+		// debug lines to see if I can alter settings through code
+		// (will do via gui later)
+		plugin.settings.tags.push({name: "test", routesTo: 8});
+		plugin.settings.tags.push({name: "anime", routesTo: 8});
+		plugin.settings.tags.push({name: "rpgmemes", routesTo: 8});
+
+		await meta.settings.set("tag-to-category-0.0", plugin.settings);
+		winston.info("tag-to-category: pushed extra tags");
+    } else {
+        winston.info("tag-to-category: settings properly present for tag-to-category!");
+        winston.info(JSON.stringify(settings));
+    }
+
 };
 
 /**
@@ -75,36 +83,54 @@ plugin.addRoutes = async ({ router, middleware, helpers }) => {
 	});
 };
 
+
 plugin.addAdminNavigation = (header) => {
 	header.plugins.push({
-		route: '/plugins/quickstart',
+		route: '/plugins/tag-to-category',
 		icon: 'fa-tint',
-		name: 'Quickstart',
+		name: 'Tag to Category',
 	});
 
 	return header;
 };
 
+async function renderAdminPage(req, res) {
+    let pluginCategories = {};
+    for (const [cid, value] of Object.entries(plugin.settings.categories)) {
+        pluginCategories[cid] = {
+            ...value,
+            name: await categories.getCategoryField(cid, "name")
+        }
+    }
+    
+    return res.render("admin/plugins/category-tags", {categoryTags: plugin.settings.tags, categories: pluginCategories});
+}
 
-plugin.moveTopicByTag = (input) => {
-	// gonna move these to a setting when i figure that out.
-	var targetCid = 8;
-	var cidTags = ["anime", "rpgmemes", "test"]
 
+
+plugin.moveTopicByTag = async (input) => {
 	// might be able to declare this in function signature?
 	// hardly use javascript, so I'm not sure...
 	let result = {topic: {}, data: {}};
 	result.topic = input.topic;
 	result.data = input.data;
 
-	//we use toLowerCase() to prevent capitalization mismatches
-	const foundMatch = cidTags.some(r=> result.topic.tags.includes(r.toLowerCase()));
-	
-	// activitypub.helpers.isUri(uid) will be useful later perhaps?
-	if (foundMatch) {
-		result.topic.cid = targetCid;
-	}
+	//we use toLowerCase() to prevent capitalization mismatches?
+	// might make that a setting later?
+	const settings = await meta.settings.get("tag-to-category-0.0");
 
+	settings.tags.forEach((tag) => {
+
+		winston.info("tag-to-category: checking tag" + tag.name);
+        winston.info(JSON.stringify(tag));
+
+		if (result.topic.tags.toLowerCase().includes(tag.name.toLowerCase())) {
+			// activitypub.helpers.isUri(uid) will be useful later perhaps?
+			winston.info("tag-to-category: routing to cid" + tag.routesTo);
+			result.topic.cid = tag.routesTo;
+		}
+	})
+	
 	return result;
 }
 

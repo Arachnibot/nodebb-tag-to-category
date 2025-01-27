@@ -5,13 +5,13 @@
   "main": "library.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nodebb/nodebb-plugin-quickstart"
+    "url": "https://github.com/Arachnibot/nodebb-tag-to-category"
   },
   "keywords": [
     "nodebb",
     "plugin",
-    "quickstart",
-    "shell"
+    "sorting",
+    "tag"
   ],
   "husky": {
     "hooks": {
