@@ -3,7 +3,7 @@
 	"url": "https://github.com/NodeBB/nodebb-plugin-quickstart",
 	"library": "./library.js",
 	"hooks": [
-		{ "hook": "filter:topic.create", "method": "moveTopicByTag" },
+		{ "hook": "filter:topic.create", "method": "sortTopic" },
 		{ "hook": "filter:admin.header.build", "method": "addAdminNavigation" },
 		{ "hook": "static:app.load", "method": "init" }
 	],

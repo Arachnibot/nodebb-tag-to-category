@@ -7,6 +7,7 @@ const winston = require.main.require('winston');
 const meta = require.main.require('./src/meta');
 
 const controllers = require('./lib/controllers');
+const activitypub = require.main.require('./src/activitypub');
 
 const routeHelpers = require.main.require('./src/routes/helpers');
 
@@ -19,18 +20,19 @@ plugin.init = async (params) => {
 
 
 	// debug reset line
-	await meta.settings.set("tag-to-category-0.0", {});
+	plugin.settings = {}
+	await meta.settings.set("tag-to-category-0.0", plugin.settings);
 
     const settings = await meta.settings.get("tag-to-category-0.0");
-
-
 	
+	// (settings === undefined || _.isEmpty(settings))
 	if (settings === undefined || _.isEmpty(settings)) {
 		winston.info("tag-to-category: settings missing. Initializing...");
 
 		plugin.settings = {
             tags: [{name: "_example", routesTo: -1}],
-			users: [{name: "example@example.org", routesTo: -1}]
+			users: [{name: -1, routesTo: -1}],
+			groups: [{name: "https://example.com/", routesTo: -1}]
         };
 
 		// debug lines to see if I can alter settings through code
@@ -38,6 +40,13 @@ plugin.init = async (params) => {
 		plugin.settings.tags.push({name: "test", routesTo: 8});
 		plugin.settings.tags.push({name: "anime", routesTo: 8});
 		plugin.settings.tags.push({name: "rpgmemes", routesTo: 8});
+
+		plugin.settings.users.push({name: 1, routesTo: 8});
+
+		plugin.settings.groups.push({name: "https://ani.social/c/manga", routesTo: 8});
+		plugin.settings.groups.push({name: "https://ttrpg.network/c/pbta", routesTo: 8});
+		plugin.settings.groups.push({name: "https://community.nodebb.org/category/4", routesTo: 8});
+		plugin.settings.groups.push({name: "https://nodebb.arachnibot.com/uid/1", routesTo: 8});
 
 		await meta.settings.set("tag-to-category-0.0", plugin.settings);
 		winston.info("tag-to-category: pushed extra tags");
@@ -110,29 +119,60 @@ async function renderAdminPage(req, res) {
 }
 
 
-
-plugin.moveTopicByTag = async (input) => {
+plugin.sortTopic = async (input) => {
 	// might be able to declare this in function signature?
 	// hardly use javascript, so I'm not sure...
 	let result = {topic: {}, data: {}};
 	result.topic = input.topic;
 	result.data = input.data;
 
-	//we use toLowerCase() to prevent capitalization mismatches?
 	// might make that a setting later?
 	const settings = await meta.settings.get("tag-to-category-0.0");
+	winston.info("tag-to-category: auto-sorting topic");
+	winston.info(JSON.stringify(settings));
+	winston.info(JSON.stringify(result));
 
-	settings.tags.forEach((tag) => {
+	// will probably condense these into a generic loop later
+	// sort by tags
+	// no need to compare if post doesn't have tags
+	if (result.data.tags != undefined || result.data.tags != []) {
+		settings.tags.forEach((tag) => {
+			winston.info("tag-to-category: checking tag " + tag.name);
 
-		winston.info("tag-to-category: checking tag" + tag.name);
-        winston.info(JSON.stringify(tag));
+			if (result.data.tags.includes(tag.name)) {
+				winston.info("tag-to-category: tag match, routing to cid " + tag.routesTo);
+				result.topic.cid = tag.routesTo;
+			}
+		})
+	}
 
-		if (result.topic.tags.toLowerCase().includes(tag.name.toLowerCase())) {
-			// activitypub.helpers.isUri(uid) will be useful later perhaps?
-			winston.info("tag-to-category: routing to cid" + tag.routesTo);
-			result.topic.cid = tag.routesTo;
+	// sort by users
+	settings.users.forEach((user) => {
+		winston.info("tag-to-category: checking user " + user.name);
+
+		if (result.topic.uid == parseInt(user.name)) {
+			winston.info("tag-to-category: user match, routing to cid " + user.routesTo);
+			result.topic.cid = user.routesTo;
 		}
 	})
+
+	// for group actors (takes priority over all others, but so be it for now)
+	const ap = result.data._activitypub
+	if (ap) {
+		winston.info("activitypub data found! checking against addressed actors...");
+
+		settings.groups.forEach((group) => {
+			winston.info("tag-to-category: checking addressed actor " + group.name);
+	
+			const inTo = ap.cc.includes(group.name);
+			const inCC = ap.to.includes(group.name);
+			if (inTo || inCC) {
+				winston.info("tag-to-category: addressed actor, routing to cid " + group.routesTo);
+				result.topic.cid = group.routesTo;
+			}
+		})
+	}
+
 	
 	return result;
 }
