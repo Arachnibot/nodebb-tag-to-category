@@ -7,6 +7,7 @@ const winston = require.main.require('winston');
 const meta = require.main.require('./src/meta');
 
 const controllers = require('./lib/controllers');
+const user = require.main.require('./src/user');
 const activitypub = require.main.require('./src/activitypub');
 
 const routeHelpers = require.main.require('./src/routes/helpers');
@@ -18,7 +19,6 @@ plugin.init = async (params) => {
     const hostMiddleware = params.middleware;
     const controllers = params.controllers;
 
-
 	// debug reset line
 	plugin.settings = {}
 	await meta.settings.set("tag-to-category-0.0", plugin.settings);
@@ -26,27 +26,20 @@ plugin.init = async (params) => {
     const settings = await meta.settings.get("tag-to-category-0.0");
 	
 	// (settings === undefined || _.isEmpty(settings))
-	if (settings === undefined || _.isEmpty(settings)) {
+	if (true) {
 		winston.info("tag-to-category: settings missing. Initializing...");
 
 		plugin.settings = {
-            tags: [{name: "_example", routesTo: -1}],
-			users: [{name: -1, routesTo: -1}],
-			groups: [{name: "https://example.com/", routesTo: -1}]
+            filters: [{name: "_example_name_or_tag", routesTo: -1}],
         };
 
 		// debug lines to see if I can alter settings through code
 		// (will do via gui later)
-		plugin.settings.tags.push({name: "test", routesTo: 8});
-		plugin.settings.tags.push({name: "anime", routesTo: 8});
-		plugin.settings.tags.push({name: "rpgmemes", routesTo: 8});
-
-		plugin.settings.users.push({name: 1, routesTo: 8});
-
-		plugin.settings.groups.push({name: "https://ani.social/c/manga", routesTo: 8});
-		plugin.settings.groups.push({name: "https://ttrpg.network/c/pbta", routesTo: 8});
-		plugin.settings.groups.push({name: "https://community.nodebb.org/category/4", routesTo: 8});
-		plugin.settings.groups.push({name: "https://nodebb.arachnibot.com/uid/1", routesTo: 8});
+		plugin.settings.filters.push({name: "test", routesTo: 8});
+		plugin.settings.filters.push({name: "https://ani.social/c/manga", routesTo: 8});
+		plugin.settings.filters.push({name: "https://ttrpg.network/c/pbta", routesTo: 8});
+		plugin.settings.filters.push({name: "https://community.nodebb.org/category/4", routesTo: 8});
+		plugin.settings.filters.push({name: "https://nodebb.arachnibot.com/uid/1", routesTo: 8});
 
 		await meta.settings.set("tag-to-category-0.0", plugin.settings);
 		winston.info("tag-to-category: pushed extra tags");
@@ -132,48 +125,47 @@ plugin.sortTopic = async (input) => {
 	winston.info(JSON.stringify(settings));
 	winston.info(JSON.stringify(result));
 
-	// will probably condense these into a generic loop later
-	// sort by tags
-	// no need to compare if post doesn't have tags
-	if (result.data.tags != undefined || result.data.tags != []) {
-		settings.tags.forEach((tag) => {
-			winston.info("tag-to-category: checking tag " + tag.name);
+	// loop over all filters (higher indexs = higher priority)
+	settings.filters.forEach((item) => {
+		winston.info("tag-to-category: checking " + item.name);
 
-			if (result.data.tags.includes(tag.name)) {
-				winston.info("tag-to-category: tag match, routing to cid " + tag.routesTo);
-				result.topic.cid = tag.routesTo;
+		// tags
+		// no need to compare if post doesn't have tags
+		const hasTags = result.data.tags != undefined || result.data.tags != [];
+		if (hasTags && result.data.tags.includes(item.name)) {
+			winston.info("tag-to-category: tag match, routing to cid " + item.routesTo);
+			result.topic.cid = item.routesTo;
+		}
+
+		// users
+		// TODO: convert to uids when saving settings?
+		// number uid match
+		var parsedUid = parseInt(item.name);
+		if (isNaN(parsedUid) && user.exists(parsedUid) && result.topic.uid == parsedUid) {
+			winston.info("tag-to-category: uid match, routing to cid " + item.routesTo);
+			result.topic.cid = item.routesTo;
+		}
+		// userslug match (make sure to add host!)
+		else if (user.existsBySlug(item.name) && result.topic.uid == user.getUidByUserslug(item.name)) {
+			winston.info("tag-to-category: userslug match, routing to cid " + item.routesTo);
+			result.topic.cid = item.routesTo;
+		}
+
+		// activitypub targets
+		const ap = result.data._activitypub
+		if (ap) {
+			const itemUri = activitypub.helpers.query(item.name);
+			winston.info("tag-to-category: activitypub uri for item is " + itemUri);
+
+			const inTo = ap.cc.includes(itemUri);
+			const inCc = ap.to.includes(itemUri);
+			if (inTo || inCc) {
+				winston.info("tag-to-category: addressed actor, routing to cid " + item.routesTo);
+				result.topic.cid = item.routesTo;
 			}
-		})
-	}
-
-	// sort by users
-	settings.users.forEach((user) => {
-		winston.info("tag-to-category: checking user " + user.name);
-
-		if (result.topic.uid == parseInt(user.name)) {
-			winston.info("tag-to-category: user match, routing to cid " + user.routesTo);
-			result.topic.cid = user.routesTo;
 		}
 	})
 
-	// for group actors (takes priority over all others, but so be it for now)
-	const ap = result.data._activitypub
-	if (ap) {
-		winston.info("activitypub data found! checking against addressed actors...");
-
-		settings.groups.forEach((group) => {
-			winston.info("tag-to-category: checking addressed actor " + group.name);
-	
-			const inTo = ap.cc.includes(group.name);
-			const inCC = ap.to.includes(group.name);
-			if (inTo || inCC) {
-				winston.info("tag-to-category: addressed actor, routing to cid " + group.routesTo);
-				result.topic.cid = group.routesTo;
-			}
-		})
-	}
-
-	
 	return result;
 }
 
